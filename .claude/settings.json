@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /Users/mg/Desktop/Dev/)",
+      "Read(//Users/mg/Desktop/Dev/**)",
+      "Bash(mkdir -p /Users/mg/Desktop/Dev/UC-data-ingest/scripts /Users/mg/Desktop/Dev/UC-data-ingest/.github/workflows)",
+      "Bash(node scripts/build.js)",
+      "Bash(python3 -m json.tool --no-indent)"
+    ],
+    "additionalDirectories": [
+      "/Users/mg/Desktop/Dev/UC-data-ingest"
+    ]
+  }
+}
