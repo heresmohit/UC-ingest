@@ -21,6 +21,6 @@ jobs:
       - run: node scripts/build.js
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: improvlore-latest
-          name: Improvlore Latest Events
+          tag_name: mtg-latest
+          name: MTG Latest Events
           files: events.json
