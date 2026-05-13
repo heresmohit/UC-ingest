@@ -24,3 +24,19 @@ jobs:
           tag_name: improvlore-latest
           name: Improvlore Latest Events
           files: events.json
+
+  ingest-mtg:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: mtg
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node scripts/build.js
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mtg-latest
+          name: MTG Latest Events
+          files: events.json
