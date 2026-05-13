@@ -19,6 +19,6 @@ jobs:
       - run: node scripts/build.js
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: Latest Events
+          tag_name: improvlore-latest
+          name: Improvlore Latest Events
           files: events.json
