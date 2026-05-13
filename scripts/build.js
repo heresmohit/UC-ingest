@@ -4,7 +4,7 @@ const CALENDAR_URL = "https://underline.center/c/calendar/5.json";
 const BASE_URL = "https://underline.center";
 const VENUE = "Underline Center, Indiranagar";
 const TAGS = ["UC"];
-const FILTER_KEYWORD = "improv"; // change this to filter for a different event type
+const FILTER_KEYWORD = "magic the gathering"; // change this to filter for a different event type
 
 function normalizeDate(str) {
   return str.replace(" ", "T");
