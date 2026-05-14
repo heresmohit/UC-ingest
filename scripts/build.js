@@ -28,8 +28,17 @@ async function fetchTopicDetail(slug, id) {
   return res.json();
 }
 
+function getEventTags(title, description) {
+  const text = `${title} ${description ?? ""}`.toLowerCase();
+  const tags = [...TAGS];
+  if (text.includes("show")) tags.push("show");
+  if (text.includes("jam")) tags.push("jam");
+  return tags;
+}
+
 function buildEvent(topic, detail) {
   const post = detail.post_stream?.posts?.[0];
+  const description = post?.raw ?? topic.excerpt ?? null;
   return {
     title: topic.title,
     excerpt: topic.excerpt ?? null,
@@ -42,7 +51,7 @@ function buildEvent(topic, detail) {
     url: post?.event?.url ?? null,
     learn_more: `${BASE_URL}/t/${topic.slug}/${topic.id}`,
     venue: VENUE,
-    tags: TAGS,
+    tags: getEventTags(topic.title, description),
   };
 }
 
