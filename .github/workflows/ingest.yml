@@ -24,6 +24,8 @@ jobs:
           tag_name: improvlore-latest
           name: Improvlore Latest Events
           files: events.json
+      - name: Trigger Cloudflare Pages rebuild
+        run: curl -X POST "${{ secrets.CF_DEPLOY_HOOK }}"
 
   ingest-mtg:
     runs-on: ubuntu-latest
