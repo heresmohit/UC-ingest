@@ -17,7 +17,7 @@ jobs:
           ref: improvlore
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - run: node scripts/build.js
       - uses: softprops/action-gh-release@v2
         with:
@@ -35,10 +35,12 @@ jobs:
           ref: mtg
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - run: node scripts/build.js
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: mtg-latest
           name: MTG Latest Events
           files: events.json
+      - name: Trigger Cloudflare Pages rebuild
+        run: curl -X POST "${{ secrets.CF_DEPLOY_HOOK }}"     
