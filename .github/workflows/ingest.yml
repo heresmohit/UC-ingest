@@ -43,4 +43,4 @@ jobs:
           name: MTG Latest Events
           files: events.json
       - name: Trigger Cloudflare Pages rebuild
-        run: curl -X POST "${{ secrets.CF_DEPLOY_HOOK }}"     
+        run: curl -X POST "${{ secrets.CF_DEPLOYHOOK_MTG }}"     
