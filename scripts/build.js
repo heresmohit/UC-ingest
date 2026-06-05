@@ -28,6 +28,20 @@ async function fetchTopicDetail(slug, id) {
   return res.json();
 }
 
+function stripHtml(html) {
+  if (!html) return null;
+  const text = html
+    .replace(/<div class="lightbox-wrapper">[\s\S]*?<\/div>/g, "")
+    .replace(/<h[1-6][^>]*>[\s\S]*?Who are Improv Lore\?[\s\S]*$/i, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&#39;/g, "’")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+  return text || null;
+}
+
 function getEventTags(title, description) {
   const text = `${title} ${description ?? ""}`.toLowerCase();
   const tags = [...TAGS];
@@ -38,11 +52,11 @@ function getEventTags(title, description) {
 
 function buildEvent(topic, detail) {
   const post = detail.post_stream?.posts?.[0];
-  const description = post?.raw ?? topic.excerpt ?? null;
+  const description = stripHtml(post?.cooked) ?? topic.excerpt ?? null;
   return {
     title: topic.title,
     excerpt: topic.excerpt ?? null,
-    full_content: post?.raw ?? null,
+    full_content: description,
     image_url: topic.image_url ?? null,
     thumbnails: topic.thumbnails ?? [],
     event_starts_at: topic.event_starts_at,
