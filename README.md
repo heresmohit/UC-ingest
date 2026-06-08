@@ -30,7 +30,8 @@ Edit [`communities.json`](communities.json). Each entry:
   "name": "improvlore",
   "output": "improvlore.json",
   "filterKeyword": "improv",
-  "authors": ["amehra4u"]
+  "authors": ["amehra4u"],
+  "includeThumbnails": false
 }
 ```
 
@@ -38,6 +39,7 @@ Edit [`communities.json`](communities.json). Each entry:
 - `output` — filename written to the repo root and published to the release.
 - `filterKeyword` — lowercase substring matched against each topic title.
 - `authors` — optional Discourse usernames. A topic matches if it was posted by one of them, even when the title doesn't contain the keyword (e.g. `amehra4u` almost always posts improv events).
+- `includeThumbnails` — optional, defaults to `false`. When `false`, only `image_url` is emitted; set `true` to also include Discourse's full `thumbnails` array (the same image at ~7 sizes), e.g. for responsive `srcset`.
 
 When you add a new `output` filename, also list it under `files:` in [`.github/workflows/ingest.yml`](.github/workflows/ingest.yml) so it gets published.
 

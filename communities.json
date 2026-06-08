@@ -10,5 +10,40 @@
     "output": "mtg.json",
     "filterKeyword": "magic: the gathering",
     "authors": []
+  },
+  {
+    "name": "cinemanextdoor",
+    "output": "cinemanextdoor.json",
+    "filterKeyword": "cinema next door",
+    "authors": ["manujosephilip", "anikthink", "abhijna"],
+    "enabled": false
+  },
+  {
+    "name": "tastytrivia",
+    "output": "tastytrivia.json",
+    "filterKeyword": "tasty trivia",
+    "authors": ["Saloni"],
+    "enabled": false
+  },
+  {
+    "name": "playfulpursuits",
+    "output": "playfulpursuits.json",
+    "filterKeyword": "playful pursuits",
+    "authors": ["cataclasma"],
+    "enabled": false
+  },
+  {
+    "name": "indiewebclub",
+    "output": "indiewebclub.json",
+    "filterKeyword": "indiewebclub",
+    "authors": ["tanvibhakta"],
+    "enabled": false
+  },
+  {
+    "name": "roligami",
+    "output": "roligami.json",
+    "filterKeyword": "roligami",
+    "authors": ["Roli"],
+    "enabled": false
   }
 ]

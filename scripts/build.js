@@ -21,10 +21,31 @@ async function loadCommunities() {
   return JSON.parse(raw);
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Fetches JSON from Discourse, retrying on transient failures (429 / 5xx).
+// Honours the Retry-After header on 429, falling back to exponential backoff.
+async function fetchJson(url, { retries = 3 } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url);
+    if (res.ok) return res.json();
+
+    const transient = res.status === 429 || res.status >= 500;
+    if (!transient || attempt >= retries) {
+      throw new Error(`Fetch failed for ${url}: ${res.status}`);
+    }
+
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const delay = Number.isFinite(retryAfter) && retryAfter > 0
+      ? retryAfter * 1000
+      : 1000 * 2 ** attempt;
+    console.warn(`  ${res.status} from ${url}; retrying in ${delay}ms`);
+    await sleep(delay);
+  }
+}
+
 async function fetchCalendar() {
-  const res = await fetch(CALENDAR_URL);
-  if (!res.ok) throw new Error(`Calendar fetch failed: ${res.status}`);
-  const data = await res.json();
+  const data = await fetchJson(CALENDAR_URL);
   return {
     topics: data.topic_list?.topics ?? [],
     users: data.users ?? [],
@@ -32,10 +53,7 @@ async function fetchCalendar() {
 }
 
 async function fetchTopicDetail(slug, id) {
-  const url = `${BASE_URL}/t/${slug}/${id}.json`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Topic fetch failed for ${slug}/${id}: ${res.status}`);
-  return res.json();
+  return fetchJson(`${BASE_URL}/t/${slug}/${id}.json`);
 }
 
 // The original poster's username, resolved from the listing's posters + users.
@@ -69,7 +87,7 @@ function getEventTags(title, description) {
   return tags;
 }
 
-function buildEvent(topic, detail, author) {
+function buildEvent(topic, detail, author, { includeThumbnails = false } = {}) {
   const post = detail.post_stream?.posts?.[0];
   const description = stripHtml(post?.cooked) ?? topic.excerpt ?? null;
   return {
@@ -78,7 +96,9 @@ function buildEvent(topic, detail, author) {
     excerpt: topic.excerpt ?? null,
     full_content: description,
     image_url: topic.image_url ?? null,
-    thumbnails: topic.thumbnails ?? [],
+    // Discourse returns the same image at ~7 sizes; most consumers only need
+    // image_url, so the full array is opt-in per community (includeThumbnails).
+    ...(includeThumbnails ? { thumbnails: topic.thumbnails ?? [] } : {}),
     event_starts_at: topic.event_starts_at,
     event_ends_at: topic.event_ends_at ?? null,
     slug: topic.slug,
@@ -129,13 +149,24 @@ async function buildCommunity(community, calendar) {
       ")"
   );
 
-  const details = await Promise.all(
+  const details = await Promise.allSettled(
     matched.map(({ topic }) => fetchTopicDetail(topic.slug, topic.id))
   );
 
-  const discourseEvents = matched.map(({ topic, author }, i) =>
-    buildEvent(topic, details[i], author)
-  );
+  // Skip any topic whose detail fetch ultimately failed (e.g. deleted topic or
+  // persistent rate-limiting) rather than failing the whole community build.
+  const discourseEvents = matched.flatMap(({ topic, author }, i) => {
+    const result = details[i];
+    if (result.status !== "fulfilled") {
+      console.warn(`  Skipping "${topic.title}": ${result.reason.message}`);
+      return [];
+    }
+    return [
+      buildEvent(topic, result.value, author, {
+        includeThumbnails: community.includeThumbnails ?? false,
+      }),
+    ];
+  });
 
   const customEvents = await loadCustomEvents(community);
   console.log(`  Loaded ${customEvents.length} custom events`);
@@ -149,8 +180,15 @@ async function buildCommunity(community, calendar) {
 }
 
 async function main() {
-  const communities = await loadCommunities();
-  console.log(`Building ${communities.length} communities from ${COMMUNITIES_CONFIG}`);
+  const all = await loadCommunities();
+  // Communities default to enabled; set "enabled": false to skip one without
+  // removing its config (JSON has no comments).
+  const communities = all.filter((c) => c.enabled !== false);
+  const skipped = all.length - communities.length;
+  console.log(
+    `Building ${communities.length} communities from ${COMMUNITIES_CONFIG}` +
+      (skipped ? ` (${skipped} disabled)` : "")
+  );
 
   // One calendar fetch shared across all communities; they're just different
   // filtered views of the same Underline Center listing.
