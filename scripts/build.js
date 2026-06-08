@@ -1,10 +1,12 @@
 import { writeFile, readFile } from "fs/promises";
 
-const CALENDAR_URL = "https://underline.center/c/calendar/5.json";
+// UC-ingest pulls from the Underline Center Discourse calendar only — every
+// community is a different slice (by keyword/author) of the same forum.
 const BASE_URL = "https://underline.center";
+const CALENDAR_URL = "https://underline.center/c/calendar/5.json";
 const VENUE = "Underline Center, Indiranagar";
 const TAGS = ["UC"];
-const FILTER_KEYWORD = "improv"; // change this to filter for a different event type
+const COMMUNITIES_CONFIG = "communities.json";
 
 function normalizeDate(str) {
   return str.replace(" ", "T");
@@ -14,11 +16,19 @@ function isFuture(dateStr) {
   return new Date(normalizeDate(dateStr)) > new Date();
 }
 
+async function loadCommunities() {
+  const raw = await readFile(COMMUNITIES_CONFIG, "utf8");
+  return JSON.parse(raw);
+}
+
 async function fetchCalendar() {
   const res = await fetch(CALENDAR_URL);
   if (!res.ok) throw new Error(`Calendar fetch failed: ${res.status}`);
   const data = await res.json();
-  return data.topic_list?.topics ?? [];
+  return {
+    topics: data.topic_list?.topics ?? [],
+    users: data.users ?? [],
+  };
 }
 
 async function fetchTopicDetail(slug, id) {
@@ -26,6 +36,15 @@ async function fetchTopicDetail(slug, id) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Topic fetch failed for ${slug}/${id}: ${res.status}`);
   return res.json();
+}
+
+// The original poster's username, resolved from the listing's posters + users.
+// Discourse marks the OP in poster.description (e.g. "Original Poster, ...").
+function getTopicAuthor(topic, usersById) {
+  const op =
+    topic.posters?.find((p) => /Original Poster/i.test(p.description ?? "")) ??
+    topic.posters?.[0];
+  return op ? usersById.get(op.user_id)?.username ?? null : null;
 }
 
 function stripHtml(html) {
@@ -50,11 +69,12 @@ function getEventTags(title, description) {
   return tags;
 }
 
-function buildEvent(topic, detail) {
+function buildEvent(topic, detail, author) {
   const post = detail.post_stream?.posts?.[0];
   const description = stripHtml(post?.cooked) ?? topic.excerpt ?? null;
   return {
     title: topic.title,
+    author: author ?? post?.username ?? null,
     excerpt: topic.excerpt ?? null,
     full_content: description,
     image_url: topic.image_url ?? null,
@@ -69,43 +89,76 @@ function buildEvent(topic, detail) {
   };
 }
 
-async function loadCustomEvents() {
-  try {
-    const raw = await readFile("custom.json", "utf8");
-    const events = JSON.parse(raw);
-    return events.filter((e) => e.event_starts_at && isFuture(e.event_starts_at));
-  } catch {
-    return [];
+async function loadCustomEvents(community) {
+  // Per-community custom file (e.g. custom.improvlore.json) falls back to the
+  // shared custom.json for backwards compatibility.
+  for (const file of [`custom.${community.name}.json`, "custom.json"]) {
+    try {
+      const raw = await readFile(file, "utf8");
+      const events = JSON.parse(raw);
+      return events.filter((e) => e.event_starts_at && isFuture(e.event_starts_at));
+    } catch {
+      // try next candidate
+    }
   }
+  return [];
 }
 
-async function main() {
-  const topics = await fetchCalendar();
+async function buildCommunity(community, calendar) {
+  console.log(`\n=== Building "${community.name}" -> ${community.output} ===`);
 
-  const improv = topics.filter(
-    (t) =>
-      t.title?.toLowerCase().includes(FILTER_KEYWORD) &&
-      t.event_starts_at &&
-      isFuture(t.event_starts_at)
+  const { topics, users } = calendar;
+  const usersById = new Map(users.map((u) => [u.id, u]));
+  const keyword = community.filterKeyword.toLowerCase();
+  const authorSet = new Set((community.authors ?? []).map((a) => a.toLowerCase()));
+
+  // A topic matches if its title contains the keyword OR its original poster is
+  // a known organiser (some events are titled loosely but always posted by them).
+  const matched = topics
+    .map((topic) => ({ topic, author: getTopicAuthor(topic, usersById) }))
+    .filter(({ topic, author }) => {
+      if (!topic.event_starts_at || !isFuture(topic.event_starts_at)) return false;
+      const byKeyword = topic.title?.toLowerCase().includes(keyword);
+      const byAuthor = author && authorSet.has(author.toLowerCase());
+      return byKeyword || byAuthor;
+    });
+
+  console.log(
+    `  Matched ${matched.length} upcoming topics (keyword "${keyword}"` +
+      (authorSet.size ? ` or authors ${[...authorSet].join(", ")}` : "") +
+      ")"
   );
-
-  console.log(`Found ${improv.length} upcoming "${FILTER_KEYWORD}" topics`);
 
   const details = await Promise.all(
-    improv.map((t) => fetchTopicDetail(t.slug, t.id))
+    matched.map(({ topic }) => fetchTopicDetail(topic.slug, topic.id))
   );
 
-  const discourseEvents = improv.map((topic, i) => buildEvent(topic, details[i]));
+  const discourseEvents = matched.map(({ topic, author }, i) =>
+    buildEvent(topic, details[i], author)
+  );
 
-  const customEvents = await loadCustomEvents();
-  console.log(`Loaded ${customEvents.length} custom events`);
+  const customEvents = await loadCustomEvents(community);
+  console.log(`  Loaded ${customEvents.length} custom events`);
 
   const all = [...discourseEvents, ...customEvents].sort(
     (a, b) => new Date(normalizeDate(a.event_starts_at)) - new Date(normalizeDate(b.event_starts_at))
   );
 
-  await writeFile("events.json", JSON.stringify(all, null, 2));
-  console.log(`Written ${all.length} events to events.json`);
+  await writeFile(community.output, JSON.stringify(all, null, 2));
+  console.log(`  Written ${all.length} events to ${community.output}`);
+}
+
+async function main() {
+  const communities = await loadCommunities();
+  console.log(`Building ${communities.length} communities from ${COMMUNITIES_CONFIG}`);
+
+  // One calendar fetch shared across all communities; they're just different
+  // filtered views of the same Underline Center listing.
+  const calendar = await fetchCalendar();
+
+  for (const community of communities) {
+    await buildCommunity(community, calendar);
+  }
 }
 
 main().catch((err) => {

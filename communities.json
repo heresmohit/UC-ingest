@@ -1,0 +1,14 @@
+[
+  {
+    "name": "improvlore",
+    "output": "improvlore.json",
+    "filterKeyword": "improv",
+    "authors": ["amehra4u"]
+  },
+  {
+    "name": "mtg",
+    "output": "mtg.json",
+    "filterKeyword": "magic: the gathering",
+    "authors": []
+  }
+]
