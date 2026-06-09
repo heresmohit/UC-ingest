@@ -1,0 +1,10 @@
+node_modules/
+
+# Local-only secrets for the daily launchd publish job (never commit)
+.env.local
+
+# Local publish logs
+*.log
+
+# Heartbeat written by ops/publish-local.sh on each successful run
+.last-run

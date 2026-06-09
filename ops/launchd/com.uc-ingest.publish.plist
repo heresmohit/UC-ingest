@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd agent: runs the daily local UC-ingest publish at 21:15 IST.
+
+  This is a TEMPLATE kept in the repo for reference. To install:
+    cp ops/launchd/com.uc-ingest.publish.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.uc-ingest.publish.plist
+
+  Note: the absolute path below assumes the repo lives at
+  /Users/mg/Desktop/Dev/UC-ingest. Update ProgramArguments / log paths if it
+  moves. launchd uses the machine's local time, which is IST on this Mac.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.uc-ingest.publish</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/mg/Desktop/Dev/UC-ingest/ops/publish-local.sh</string>
+  </array>
+
+  <!-- launchd starts with a minimal PATH; add Homebrew so node/gh/curl resolve. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- Daily at 21:15 local (IST) — 15 min after the weekly CI window so the
+       District-enriched local run wins on Sundays. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>21</integer>
+    <key>Minute</key>
+    <integer>15</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/mg/Desktop/Dev/UC-ingest/publish.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/mg/Desktop/Dev/UC-ingest/publish.log</string>
+</dict>
+</plist>

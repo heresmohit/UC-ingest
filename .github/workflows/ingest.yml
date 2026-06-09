@@ -2,7 +2,10 @@ name: Ingest Events
 
 on:
   schedule:
-    - cron: "30 15 * * *"
+    # Weekly fallback only (Sun 21:00 IST = 15:30 UTC). Runs Discourse-only —
+    # District's API geoblocks GitHub's non-India runners. The daily, District-
+    # enriched build runs locally via launchd (see ops/publish-local.sh).
+    - cron: "30 15 * * 0"
   workflow_dispatch:
 
 permissions:
@@ -16,7 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: node scripts/build.js
+      - run: node src/build.js
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: events-latest

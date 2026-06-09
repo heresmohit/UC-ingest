@@ -16,7 +16,7 @@ Fetches upcoming community events from the [Underline Center Discourse calendar]
 ## Run locally
 
 ```bash
-node scripts/build.js
+node src/build.js   # or: npm run build
 ```
 
 Requires Node 18+ (uses native `fetch`). No dependencies to install.

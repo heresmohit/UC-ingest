@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd agent: freshness / dead-man's-switch for the daily publish.
+
+  Runs check-freshness.sh at login and every 6 hours while the Mac is awake. If
+  the events-latest release hasn't been republished in ~26h (i.e. the daily job
+  was missed because the Mac was asleep/off), it fires a macOS notification.
+
+  This is the safety net the failure-notification can't provide: it catches runs
+  that never happened, not just runs that errored.
+
+  TEMPLATE — to install:
+    cp ops/launchd/com.uc-ingest.freshness.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.uc-ingest.freshness.plist
+
+  Assumes the repo is at /Users/mg/Desktop/Dev/UC-ingest; update paths if it moves.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.uc-ingest.freshness</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/mg/Desktop/Dev/UC-ingest/ops/check-freshness.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- Check when you log in... -->
+  <key>RunAtLoad</key>
+  <true/>
+  <!-- ...and every 6 hours while the Mac is awake (StartInterval, unlike
+       StartCalendarInterval, fires soon after wake if the interval elapsed). -->
+  <key>StartInterval</key>
+  <integer>21600</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/mg/Desktop/Dev/UC-ingest/publish.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/mg/Desktop/Dev/UC-ingest/publish.log</string>
+</dict>
+</plist>
