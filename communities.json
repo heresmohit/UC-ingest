@@ -3,13 +3,19 @@
     "name": "improvlore",
     "output": "improvlore.json",
     "filterKeyword": "improv",
-    "authors": ["amehra4u"]
+    "authors": ["amehra4u"],
+    "district": {
+      "match": ["improv lore", "improvlore"]
+    }
   },
   {
     "name": "mtg",
     "output": "mtg.json",
     "filterKeyword": "magic: the gathering",
-    "authors": []
+    "authors": [],
+    "district": {
+      "match": ["magic the gathering with reroll", "magic the gathering by reroll"]
+    }
   },
   {
     "name": "cinemanextdoor",

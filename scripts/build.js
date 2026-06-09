@@ -1,12 +1,13 @@
 import { writeFile, readFile } from "fs/promises";
-
-// UC-ingest pulls from the Underline Center Discourse calendar only — every
-// community is a different slice (by keyword/author) of the same forum.
-const BASE_URL = "https://underline.center";
-const CALENDAR_URL = "https://underline.center/c/calendar/5.json";
-const VENUE = "Underline Center, Indiranagar";
-const TAGS = ["UC"];
-const COMMUNITIES_CONFIG = "communities.json";
+import { COMMUNITIES_CONFIG } from "./lib/config.js";
+import {
+  fetchCalendar,
+  fetchTopicDetail,
+  getTopicAuthor,
+  buildEvent,
+} from "./lib/discourse.js";
+import { loadDistrictEvents } from "./lib/district.js";
+import { mergeDistrict } from "./lib/merge.js";
 
 function normalizeDate(str) {
   return str.replace(" ", "T");
@@ -19,94 +20,6 @@ function isFuture(dateStr) {
 async function loadCommunities() {
   const raw = await readFile(COMMUNITIES_CONFIG, "utf8");
   return JSON.parse(raw);
-}
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Fetches JSON from Discourse, retrying on transient failures (429 / 5xx).
-// Honours the Retry-After header on 429, falling back to exponential backoff.
-async function fetchJson(url, { retries = 3 } = {}) {
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url);
-    if (res.ok) return res.json();
-
-    const transient = res.status === 429 || res.status >= 500;
-    if (!transient || attempt >= retries) {
-      throw new Error(`Fetch failed for ${url}: ${res.status}`);
-    }
-
-    const retryAfter = Number(res.headers.get("retry-after"));
-    const delay = Number.isFinite(retryAfter) && retryAfter > 0
-      ? retryAfter * 1000
-      : 1000 * 2 ** attempt;
-    console.warn(`  ${res.status} from ${url}; retrying in ${delay}ms`);
-    await sleep(delay);
-  }
-}
-
-async function fetchCalendar() {
-  const data = await fetchJson(CALENDAR_URL);
-  return {
-    topics: data.topic_list?.topics ?? [],
-    users: data.users ?? [],
-  };
-}
-
-async function fetchTopicDetail(slug, id) {
-  return fetchJson(`${BASE_URL}/t/${slug}/${id}.json`);
-}
-
-// The original poster's username, resolved from the listing's posters + users.
-// Discourse marks the OP in poster.description (e.g. "Original Poster, ...").
-function getTopicAuthor(topic, usersById) {
-  const op =
-    topic.posters?.find((p) => /Original Poster/i.test(p.description ?? "")) ??
-    topic.posters?.[0];
-  return op ? usersById.get(op.user_id)?.username ?? null : null;
-}
-
-function stripHtml(html) {
-  if (!html) return null;
-  const text = html
-    .replace(/<div class="lightbox-wrapper">[\s\S]*?<\/div>/g, "")
-    .replace(/<h[1-6][^>]*>[\s\S]*?Who are Improv Lore\?[\s\S]*$/i, "")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&#39;/g, "’")
-    .replace(/&quot;/g, '"')
-    .replace(/\n{2,}/g, "\n")
-    .trim();
-  return text || null;
-}
-
-function getEventTags(title, description) {
-  const text = `${title} ${description ?? ""}`.toLowerCase();
-  const tags = [...TAGS];
-  if (text.includes("show")) tags.push("show");
-  if (text.includes("jam")) tags.push("jam");
-  return tags;
-}
-
-function buildEvent(topic, detail, author, { includeThumbnails = false } = {}) {
-  const post = detail.post_stream?.posts?.[0];
-  const description = stripHtml(post?.cooked) ?? topic.excerpt ?? null;
-  return {
-    title: topic.title,
-    author: author ?? post?.username ?? null,
-    excerpt: topic.excerpt ?? null,
-    full_content: description,
-    image_url: topic.image_url ?? null,
-    // Discourse returns the same image at ~7 sizes; most consumers only need
-    // image_url, so the full array is opt-in per community (includeThumbnails).
-    ...(includeThumbnails ? { thumbnails: topic.thumbnails ?? [] } : {}),
-    event_starts_at: topic.event_starts_at,
-    event_ends_at: topic.event_ends_at ?? null,
-    slug: topic.slug,
-    url: post?.event?.url ?? null,
-    learn_more: `${BASE_URL}/t/${topic.slug}/${topic.id}`,
-    venue: VENUE,
-    tags: getEventTags(topic.title, description),
-  };
 }
 
 async function loadCustomEvents(community) {
@@ -171,8 +84,18 @@ async function buildCommunity(community, calendar) {
   const customEvents = await loadCustomEvents(community);
   console.log(`  Loaded ${customEvents.length} custom events`);
 
-  const all = [...discourseEvents, ...customEvents].sort(
+  // District is both a discovery source (events not yet on Discourse) and the
+  // authority on date/time (it's the ticketing system), so it overrides on
+  // conflict. Merge after building the base list, then sort — District may have
+  // moved an event's date.
+  const districtBySlug = await loadDistrictEvents(community);
+  const base = [...discourseEvents, ...customEvents];
+  const all = mergeDistrict(base, districtBySlug).sort(
     (a, b) => new Date(normalizeDate(a.event_starts_at)) - new Date(normalizeDate(b.event_starts_at))
+  );
+  console.log(
+    `  ${districtBySlug.size} District events (${all.length - base.length} new, ` +
+      `${districtBySlug.size - (all.length - base.length)} overriding)`
   );
 
   await writeFile(community.output, JSON.stringify(all, null, 2));
