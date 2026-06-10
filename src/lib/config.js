@@ -17,18 +17,19 @@ export const COMMUNITIES_CONFIG = "communities.json";
 // The per-event detail comes from the public event page rather than the
 // getBySlug API: the API host (api-events.district.in) geoblocks non-India IPs,
 // which breaks GitHub Actions runners, but the page host (www.district.in) is
-// CDN-served with no geofence and embeds the exact same payload as Next.js RSC
-// flight data. Scraping the page keeps the District build working in CI.
+// CDN-served with no geofence and embeds a schema.org Event JSON-LD block (for
+// SEO) with everything we need — name, description, image, dates, status.
+// JSON-LD is a public contract District keeps stable for Google, unlike the
+// Next.js internals it also ships.
 export const DISTRICT_SITEMAP =
   "https://www.district.in/events/search-sitemap/event-detail-pages.xml";
 export const districtEventPageUrl = (slug) =>
   `https://www.district.in/events/${slug}-buy-tickets`;
 
-// States worth surfacing. sold_out is kept (a sold-out show is still a real
-// listing); anything that is not a live ticketed offering is skipped.
+// JSON-LD eventStatus values worth surfacing. Cancelled/postponed/moved-online
+// events are skipped; note District keeps past events EventScheduled, so the
+// date filter (not status) is what drops finished events.
 export const DISTRICT_SHOWABLE = new Set([
-  "available",
-  "sold_out",
-  "coming_soon",
-  "tba",
+  "EventScheduled",
+  "EventRescheduled",
 ]);
