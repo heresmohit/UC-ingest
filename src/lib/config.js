@@ -12,11 +12,17 @@ export const COMMUNITIES_CONFIG = "communities.json";
 //
 // Discovery uses District's public event sitemap (the only complete public
 // index — the brand's embedded upcoming_events list is curated/incomplete, and
-// every brand/search listing API requires auth). The per-event detail comes
-// from the same getBySlug endpoint the website's ticket button already uses.
-export const DISTRICT_API = "https://api-events.district.in/event/getBySlug/";
+// every brand/search listing API requires auth).
+//
+// The per-event detail comes from the public event page rather than the
+// getBySlug API: the API host (api-events.district.in) geoblocks non-India IPs,
+// which breaks GitHub Actions runners, but the page host (www.district.in) is
+// CDN-served with no geofence and embeds the exact same payload as Next.js RSC
+// flight data. Scraping the page keeps the District build working in CI.
 export const DISTRICT_SITEMAP =
   "https://www.district.in/events/search-sitemap/event-detail-pages.xml";
+export const districtEventPageUrl = (slug) =>
+  `https://www.district.in/events/${slug}-buy-tickets`;
 
 // States worth surfacing. sold_out is kept (a sold-out show is still a real
 // listing); anything that is not a live ticketed offering is skipped.

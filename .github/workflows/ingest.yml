@@ -2,11 +2,16 @@ name: Ingest Events
 
 on:
   schedule:
-    # Weekly fallback only (Sun 21:00 IST = 15:30 UTC). Runs Discourse-only —
-    # District's API geoblocks GitHub's non-India runners. The daily, District-
-    # enriched build runs locally via launchd (see ops/publish-local.sh).
+    # Weekly publish (Sun 21:00 IST = 15:30 UTC). District enrichment now works
+    # on GitHub runners (we read the un-geoblocked event pages, not the geoblocked
+    # API), so this is a full District-enriched build, not a Discourse-only one.
     - cron: "30 15 * * 0"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and upload JSON only — skip the release and Cloudflare deploy"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -20,7 +25,23 @@ jobs:
         with:
           node-version: "20"
       - run: node src/build.js
-      - uses: softprops/action-gh-release@v2
+
+      # Always grab the built JSON on a manual run so a dry run is inspectable
+      # (download from the run's Artifacts section). Costs nothing on schedule.
+      - name: Upload built event JSON
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: event-json
+          path: |
+            improvlore.json
+            mtg.json
+
+      # Publish + deploy are skipped on a dry run. dry_run is unset for the
+      # scheduled event, so the '!= true' guard keeps the weekly publish live.
+      - name: Publish release
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: events-latest
           name: Latest Community Events
@@ -28,4 +49,5 @@ jobs:
             improvlore.json
             mtg.json
       - name: Trigger Cloudflare Pages rebuild
+        if: ${{ github.event.inputs.dry_run != 'true' }}
         run: curl -X POST "${{ secrets.CF_DEPLOY_HOOK }}"

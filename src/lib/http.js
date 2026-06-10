@@ -1,11 +1,11 @@
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Fetches JSON from Discourse, retrying on transient failures (429 / 5xx).
-// Honours the Retry-After header on 429, falling back to exponential backoff.
-export async function fetchJson(url, { retries = 3 } = {}) {
+// Shared fetch with retry on transient failures (429 / 5xx). Honours the
+// Retry-After header on 429, falling back to exponential backoff.
+async function fetchWithRetry(url, { retries = 3 } = {}) {
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(url);
-    if (res.ok) return res.json();
+    if (res.ok) return res;
 
     const transient = res.status === 429 || res.status >= 500;
     if (!transient || attempt >= retries) {
@@ -21,11 +21,14 @@ export async function fetchJson(url, { retries = 3 } = {}) {
   }
 }
 
-// Like fetchJson but returns text, for the sitemap (which is XML). Reuses the
-// same retry/backoff policy as fetchJson via a shared core would be nicer, but
-// the sitemap is a single non-critical call, so a plain fetch is enough.
-export async function fetchText(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Fetch failed for ${url}: ${res.status}`);
+export async function fetchJson(url, opts) {
+  const res = await fetchWithRetry(url, opts);
+  return res.json();
+}
+
+// Returns text, for the sitemap (XML) and District event pages (HTML). Shares
+// the retry/backoff policy since the per-event page fetch is now load-bearing.
+export async function fetchText(url, opts) {
+  const res = await fetchWithRetry(url, opts);
   return res.text();
 }
