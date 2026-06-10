@@ -2,10 +2,10 @@ name: Ingest Events
 
 on:
   schedule:
-    # Weekly publish (Sun 21:00 IST = 15:30 UTC). District enrichment now works
-    # on GitHub runners (we read the un-geoblocked event pages, not the geoblocked
-    # API), so this is a full District-enriched build, not a Discourse-only one.
-    - cron: "30 15 * * 0"
+    # Nightly publish at 00:00 IST (= 18:30 UTC; GitHub cron is UTC). District
+    # enrichment now works on GitHub runners (we read the un-geoblocked event
+    # pages, not the geoblocked API), so this is a full District-enriched build.
+    - cron: "30 18 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
