@@ -36,6 +36,7 @@ jobs:
           path: |
             improvlore.json
             mtg.json
+            eleven-am-club.json
 
       # Publish + deploy are skipped on a dry run. dry_run is unset for the
       # scheduled event, so the '!= true' guard keeps the weekly publish live.
@@ -48,6 +49,7 @@ jobs:
           files: |
             improvlore.json
             mtg.json
+            eleven-am-club.json
       - name: Trigger Cloudflare Pages rebuild
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: curl -X POST "${{ secrets.CF_DEPLOY_HOOK }}"
