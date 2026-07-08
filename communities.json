@@ -18,6 +18,15 @@
     }
   },
   {
+    "name": "eleven am club",
+    "output": "eleven-am-club.json",
+    "filterKeyword": "eleven am club",
+    "authors": ["4nn_ml"],
+    "district": {
+      "match": ["eleven am club", "Eleven AM Club"]
+    }
+  },
+  {
     "name": "cinemanextdoor",
     "output": "cinemanextdoor.json",
     "filterKeyword": "cinema next door",
