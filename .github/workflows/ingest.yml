@@ -26,6 +26,18 @@ jobs:
           node-version: "20"
       - run: node src/build.js
 
+      # Syncs improvlore.json into D1 for the /admin page. improvlore is the
+      # only community backed by D1 today; every other community stays pure
+      # JSON/Release. Idempotent: hashes the source file and skips the row
+      # sync entirely when nothing changed since the last run.
+      - name: Sync improvlore to D1
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: node src/sync-d1.js
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_D1_DATABASE_ID: ${{ secrets.CF_D1_DATABASE_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+
       # Always grab the built JSON on a manual run so a dry run is inspectable
       # (download from the run's Artifacts section). Costs nothing on schedule.
       - name: Upload built event JSON

@@ -26,10 +26,14 @@ async function fetchDistrictSlugs(matchTerms) {
   return slugs;
 }
 
-// The schema.org Event object from the page's JSON-LD blocks, or null. District
-// embeds one per event page for SEO; a block may be a single object or an array.
-function extractEventLd(html) {
+// All schema.org Event objects from the page's JSON-LD blocks, in document
+// order. District embeds one Event block per upcoming date on the same page
+// for a recurring show (e.g. weekly/monthly repeats of the same event), plus
+// other non-Event blocks (BreadcrumbList, etc.) we ignore. A single-date show
+// simply yields a one-element array.
+function extractEventLds(html) {
   const re = /<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
+  const events = [];
   let m;
   while ((m = re.exec(html))) {
     let parsed;
@@ -39,10 +43,11 @@ function extractEventLd(html) {
       continue; // malformed block; try the next one
     }
     const items = Array.isArray(parsed) ? parsed : [parsed];
-    const event = items.find((d) => d?.["@type"] === "Event");
-    if (event) return event;
+    for (const item of items) {
+      if (item?.["@type"] === "Event") events.push(item);
+    }
   }
-  return null;
+  return events;
 }
 
 // JSON-LD descriptions are already plain text (District strips the HTML), but
@@ -76,8 +81,12 @@ function eventWindow(data) {
 // Map a District JSON-LD Event into our event shape (matches buildEvent).
 // tags must include "UC" (the website only renders UC-tagged events) and the
 // url must be a district.in/.../event link so the site's live ticket button
-// keys off it.
-function buildDistrictEvent(data, slug, win) {
+// keys off it. `slug` is the page's sitemap slug (shared by every date on a
+// recurring show — used for the real url/learn_more, since District serves
+// one page per show regardless of date count); `key` is the per-date identity
+// used only as this map's key, so multiple dates from the same page don't
+// collide.
+function buildDistrictEvent(data, slug, key, win) {
   const description = cleanDescription(data.description);
   // District titles can carry stray leading/trailing/doubled whitespace that
   // Discourse titles never do; normalise so slugs and display stay clean.
@@ -90,7 +99,7 @@ function buildDistrictEvent(data, slug, win) {
     image_url: data.image ?? null,
     event_starts_at: win.startsAt,
     event_ends_at: win.endsAt,
-    slug,
+    slug: key,
     url: `https://district.in/${slug}/event`,
     learn_more: `https://www.district.in/events/${slug}-buy-tickets`,
     venue: VENUE,
@@ -123,7 +132,15 @@ export async function loadDistrictEvents(community) {
   // Outcome tally so a CI log makes the failure mode obvious at a glance:
   // fetch_failed = non-2xx (a 403/451 here is the geoblock); parse_miss = page
   // came back but had no Event JSON-LD (format change, or a 200 block page).
-  const tally = { kept: 0, fetch_failed: 0, parse_miss: 0, not_showable: 0, no_date: 0, past: 0 };
+  const tally = {
+    kept: 0,
+    fetch_failed: 0,
+    parse_miss: 0,
+    not_showable: 0,
+    no_date: 0,
+    past: 0,
+    multi_date_pages: 0,
+  };
 
   for (const slug of slugs) {
     let html;
@@ -135,41 +152,54 @@ export async function loadDistrictEvents(community) {
       continue;
     }
 
-    const data = extractEventLd(html);
-    if (!data) {
+    const events = extractEventLds(html);
+    if (events.length === 0) {
       tally.parse_miss++;
       console.warn(
         `  District [parse_miss] ${slug}: no Event JSON-LD in ${html.length}-char page`
       );
       continue;
     }
-    if (!DISTRICT_SHOWABLE.has(data.eventStatus)) {
-      tally.not_showable++;
-      console.log(`  District [not_showable] ${slug}: status=${data.eventStatus}`);
-      continue;
+    if (events.length > 1) {
+      tally.multi_date_pages++;
+      console.log(`  District [multi_date] ${slug}: ${events.length} dates on one page`);
     }
 
-    const win = eventWindow(data);
-    if (!win) {
-      tally.no_date++;
-      console.log(`  District [no_date] ${slug}: no usable start date`);
-      continue;
-    }
-    if (win.endTs < now) {
-      tally.past++;
-      console.log(`  District [past] ${slug}: ended ${win.endsAt ?? win.startsAt}`);
-      continue;
-    }
+    // One page can list several upcoming dates for the same recurring show;
+    // each date is its own entry, keyed uniquely so they don't collide, while
+    // url/learn_more (built from `slug`, not `key`) still point at the one
+    // real District page shared by every date.
+    for (const data of events) {
+      if (!DISTRICT_SHOWABLE.has(data.eventStatus)) {
+        tally.not_showable++;
+        console.log(`  District [not_showable] ${slug}: status=${data.eventStatus}`);
+        continue;
+      }
 
-    tally.kept++;
-    console.log(`  District [kept] ${slug}: "${data.name}" @ ${win.startsAt}`);
-    bySlug.set(slug, buildDistrictEvent(data, slug, win));
+      const win = eventWindow(data);
+      if (!win) {
+        tally.no_date++;
+        console.log(`  District [no_date] ${slug}: no usable start date`);
+        continue;
+      }
+      if (win.endTs < now) {
+        tally.past++;
+        console.log(`  District [past] ${slug}: ended ${win.endsAt ?? win.startsAt}`);
+        continue;
+      }
+
+      const dateStamp = win.startsAt.slice(0, 10).replace(/-/g, "");
+      const key = `${slug}-${dateStamp}`;
+      tally.kept++;
+      console.log(`  District [kept] ${key}: "${data.name}" @ ${win.startsAt}`);
+      bySlug.set(key, buildDistrictEvent(data, slug, key, win));
+    }
   }
 
   console.log(
     `  District summary: kept=${tally.kept} fetch_failed=${tally.fetch_failed} ` +
       `parse_miss=${tally.parse_miss} not_showable=${tally.not_showable} ` +
-      `no_date=${tally.no_date} past=${tally.past}`
+      `no_date=${tally.no_date} past=${tally.past} multi_date_pages=${tally.multi_date_pages}`
   );
   return bySlug;
 }

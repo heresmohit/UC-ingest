@@ -1,5 +1,8 @@
 node_modules/
 
+# Local D1/Workers dev state (admin/)
+.wrangler/
+
 # Local-only secrets for the daily launchd publish job (never commit)
 .env.local
 

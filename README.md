@@ -78,3 +78,42 @@ Only `title` and `event_starts_at` are required.
 Both `"2026-06-15 19:30:00"` and `"2026-06-15T19:30:00Z"` date formats are accepted. Past events are automatically filtered out.
 
 Custom events have no `tags` field — this is how the front-end distinguishes them from Discourse events (which carry `["UC"]`).
+
+## District recurring dates
+
+A District event page can list several upcoming dates for the same show (one full `Event` JSON-LD block per date). [`district.js`](src/lib/district.js) extracts all of them, not just the first, keying each date as its own entry (`<sitemap-slug>-<YYYYMMDD>`) while `url`/`learn_more` still point at the one real District page. [`merge.js`](src/lib/merge.js) matches a Discourse post to whichever District date starts soonest when several share a title.
+
+## Improv Lore admin (D1)
+
+`improvlore` is the only community backed by a live, editable database — every other community stays pure JSON/Release as described above.
+
+- After `node src/build.js` runs, `node src/sync-d1.js` upserts `improvlore.json` into a Cloudflare D1 database. It hashes the file first and skips straight to occurrence-rollover stamping (below) when nothing changed since the last run — no per-row writes on a quiet night.
+- Each event row keeps a `display_*` value (what's actually shown / admin-editable) alongside an `ingested_*` value (the untouched last-synced value, kept only so the admin can see a source update and accept or ignore it). Sync only ever writes `ingested_*`; admin edits only ever write `display_*` — neither can clobber the other.
+- Rows are never deleted. A past date is just a row whose `display_event_starts_at` has passed — grouping by show title (`normalized_title`) surfaces a show's full history, past and future, in one place. Sync stamps `occurrence_status = 'occurred'` the moment a date first crosses into the past; flip it to `'cancelled'` from the admin page if a show didn't actually happen.
+- The admin page lives at **improvlore.com/admin** (a Cloudflare Worker route on the same zone as the improvlore.com Pages site — see [`admin/wrangler.jsonc`](admin/wrangler.jsonc)), protected by Cloudflare Access. It shows every event grouped by show, with every field editable, a per-event disable toggle, and a community-wide enable/disable toggle.
+- The same Worker serves `improvlore.com/api/improvlore.json` — same shape as the release JSON, but sourced from D1 and reflecting admin edits/disables. [improvlore.com's `src/_data/events.js`](../improvlore.com/src/_data/events.js) fetches from here (falling back to the GitHub Release if the Worker is unreachable), so an admin save triggers a Cloudflare Pages rebuild (via the same `CF_DEPLOY_HOOK` used nightly) and shows up on improvlore.com/events within a minute or two.
+
+### Setup (one-time)
+
+```bash
+cd admin
+npm install
+wrangler d1 create uc-ingest        # copy the printed database_id into wrangler.jsonc
+npm run migrate:remote              # applies migrations/0001_init.sql
+wrangler secret put CF_DEPLOY_HOOK  # same Pages deploy hook improvlore.com/.env already has
+npm run deploy
+```
+
+GitHub Actions needs three repo secrets for the `Sync improvlore to D1` step in [`ingest.yml`](.github/workflows/ingest.yml): `CF_ACCOUNT_ID`, `CF_D1_DATABASE_ID` (from the `d1 create` output above), and `CF_API_TOKEN` (a token scoped to D1:Edit only).
+
+### Local development
+
+```bash
+cd admin
+npm run migrate:local               # schema only, no Cloudflare account needed
+wrangler dev --var ENVIRONMENT:development   # skips the Access check locally
+```
+
+```bash
+D1_LOCAL=1 node src/sync-d1.js      # syncs into the local D1 instance above instead of the real HTTP API
+```

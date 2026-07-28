@@ -1,0 +1,37 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "uc-ingest-admin",
+	"main": "worker/index.js",
+	"compatibility_date": "2026-06-16",
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "uc-ingest",
+			"database_id": "39af3725-553a-43c2-b169-654b972289d8",
+			"migrations_dir": "migrations"
+		}
+	],
+	// improvlore.com is served by a separate Cloudflare Pages project. A
+	// Worker route on the same zone takes precedence over Pages for matching
+	// paths only — every other improvlore.com path keeps going to Pages
+	// untouched. Requires improvlore.com's zone to already be on this
+	// Cloudflare account (confirmed) before `wrangler deploy` will accept this.
+	"routes": [
+		{
+			"pattern": "improvlore.com/admin",
+			"zone_name": "improvlore.com"
+		},
+		{
+			"pattern": "improvlore.com/admin/*",
+			"zone_name": "improvlore.com"
+		},
+		{
+			"pattern": "improvlore.com/api/admin/*",
+			"zone_name": "improvlore.com"
+		},
+		{
+			"pattern": "improvlore.com/api/improvlore.json",
+			"zone_name": "improvlore.com"
+		}
+	]
+}
