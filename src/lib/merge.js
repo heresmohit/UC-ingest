@@ -11,7 +11,17 @@ function districtSlugFromUrl(url) {
   }
 }
 
-export const normTitle = (t) => (t ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+// Strips punctuation as well as collapsing whitespace: Discourse and District
+// occasionally disagree on punctuation for the same show (e.g. "And Then?"
+// vs "And, Then?"), and a title-only match is the sole way a Discourse post
+// without a District ticket link finds its District twin. Punctuation drift
+// there silently defeats the match, leaving both copies in the merged output.
+export const normTitle = (t) =>
+  (t ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 // Merge District events into the Discourse/custom list with District winning on
 // conflict. A base event matches a District event by District slug (derived
