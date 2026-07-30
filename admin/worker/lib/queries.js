@@ -1,3 +1,5 @@
+import { normTitle } from "../../../src/lib/merge.js";
+
 const COMMUNITY = "improvlore";
 
 // Every editable field, as (jsonKey, columnSuffix) pairs — mirrors
@@ -147,8 +149,4 @@ export async function getPublicFeed(db) {
     event.tags = JSON.parse(row.display_tags ?? "[]");
     return event;
   });
-}
-
-function normTitle(t) {
-  return (t ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 }
