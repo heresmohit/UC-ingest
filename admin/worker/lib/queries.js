@@ -126,12 +126,18 @@ export async function getCommunityState(db) {
 // build.js's own filter exactly. occurrence_status never factors in here —
 // it's an admin/history-only concept, and a past event is already excluded
 // by the date filter regardless of whether it occurred or was cancelled.
+// Returns { events, lastSyncedAt } — lastSyncedAt is communities.updated_at,
+// bumped by sync-d1.js on every run (whether or not any event data actually
+// changed), so it answers "did the nightly sync last actually run" rather
+// than "is the Worker alive right now". Kept out of the JSON body (which
+// stays a bare array — improvlore.com's events.js iterates it directly) and
+// surfaced as a response header instead; see public-feed.js.
 export async function getPublicFeed(db) {
   const community = await db
-    .prepare("SELECT display_enabled FROM communities WHERE name = ?")
+    .prepare("SELECT display_enabled, updated_at FROM communities WHERE name = ?")
     .bind(COMMUNITY)
     .first();
-  if (!community?.display_enabled) return [];
+  if (!community?.display_enabled) return { events: [], lastSyncedAt: community?.updated_at ?? null };
 
   const { results } = await db
     .prepare(
@@ -142,11 +148,13 @@ export async function getPublicFeed(db) {
     .bind(COMMUNITY)
     .all();
 
-  return results.map((row) => {
+  const events = results.map((row) => {
     const event = {};
     for (const [jsonKey, col] of FIELDS) event[jsonKey] = row[`display_${col}`];
     event.slug = row.slug;
     event.tags = JSON.parse(row.display_tags ?? "[]");
     return event;
   });
+
+  return { events, lastSyncedAt: community.updated_at };
 }
