@@ -13,18 +13,24 @@ import { execFileSync } from "child_process";
 const D1_LOCAL = process.env.D1_LOCAL === "1";
 const ADMIN_DIR = new URL("../../admin", import.meta.url).pathname;
 
-function runLocal(sql, params) {
-  // wrangler d1 execute has no parameterized-query flag; inline params as
-  // SQL literals. Safe here because sync-d1.js is the only caller and every
-  // value it sends originates from our own ingest JSON, not user input.
-  const inlined = sql.replace(/\?/g, () => literal(params.shift()));
-  const out = execFileSync(
-    "wrangler",
-    ["d1", "execute", "uc-ingest", "--local", "--json", "--command", inlined],
-    { cwd: ADMIN_DIR, encoding: "utf8", maxBuffer: 1024 * 1024 * 32 }
-  );
-  const [result] = JSON.parse(out);
-  return result?.results ?? [];
+function inlineSql(sql, params) {
+  const p = [...params];
+  return sql.replace(/\?/g, () => literal(p.shift()));
+}
+
+function runWrangler(command, { remote = false } = {}) {
+  const args = ["d1", "execute", "uc-ingest", "--json", "--command", command];
+  if (remote) {
+    args.push("--remote");
+  } else {
+    args.push("--local");
+  }
+  const out = execFileSync("wrangler", args, {
+    cwd: ADMIN_DIR,
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024 * 32,
+  });
+  return JSON.parse(out);
 }
 
 function literal(value) {
@@ -36,42 +42,55 @@ function literal(value) {
 // Runs a single statement against D1 and returns its result rows (empty
 // array for statements with no rows, e.g. INSERT/UPDATE).
 export async function d1Query(sql, params = []) {
-  if (D1_LOCAL) return runLocal(sql, [...params]);
+  if (D1_LOCAL) {
+    const results = runWrangler(inlineSql(sql, params), { remote: false });
+    return results[0]?.results ?? [];
+  }
 
   const { CF_ACCOUNT_ID, CF_D1_DATABASE_ID, CF_API_TOKEN } = process.env;
-  if (!CF_ACCOUNT_ID || !CF_D1_DATABASE_ID || !CF_API_TOKEN) {
-    throw new Error(
-      "Missing CF_ACCOUNT_ID / CF_D1_DATABASE_ID / CF_API_TOKEN (set D1_LOCAL=1 for local dev instead)"
+  if (CF_ACCOUNT_ID && CF_D1_DATABASE_ID && CF_API_TOKEN) {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/d1/database/${CF_D1_DATABASE_ID}/query`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${CF_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ sql, params }),
+      }
     );
-  }
 
-  const res = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/d1/database/${CF_D1_DATABASE_ID}/query`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${CF_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ sql, params }),
+    const body = await res.json();
+    if (!res.ok || !body.success) {
+      throw new Error(`D1 query failed: ${JSON.stringify(body.errors ?? body)}`);
     }
-  );
-
-  const body = await res.json();
-  if (!res.ok || !body.success) {
-    throw new Error(`D1 query failed: ${JSON.stringify(body.errors ?? body)}`);
+    return body.result?.[0]?.results ?? [];
   }
-  return body.result?.[0]?.results ?? [];
+
+  // Fallback to wrangler with --remote (e.g. running locally without API token)
+  const results = runWrangler(inlineSql(sql, params), { remote: true });
+  return results[0]?.results ?? [];
 }
 
-// Runs several statements as one batch (D1's /query API accepts one
-// statement per call, so this is a small sequential helper, not a true
-// atomic batch — fine for sync-d1.js, which only ever writes rows derived
-// from its own single-community JSON file and can safely re-run on failure).
+// Runs several statements as one batch. CI uses the sequential HTTP query API;
+// local wrangler runs execute all statements as a single multi-statement batch.
 export async function d1Batch(statements) {
-  const results = [];
-  for (const { sql, params } of statements) {
-    results.push(await d1Query(sql, params));
+  if (!statements.length) return [];
+
+  const { CF_ACCOUNT_ID, CF_D1_DATABASE_ID, CF_API_TOKEN } = process.env;
+  if (!D1_LOCAL && CF_ACCOUNT_ID && CF_D1_DATABASE_ID && CF_API_TOKEN) {
+    const results = [];
+    for (const { sql, params } of statements) {
+      results.push(await d1Query(sql, params));
+    }
+    return results;
   }
-  return results;
+
+  const command =
+    statements
+      .map(({ sql, params }) => inlineSql(sql, params).trim().replace(/;$/, ""))
+      .join(";\n") + ";";
+  const results = runWrangler(command, { remote: !D1_LOCAL });
+  return results.map((r) => r?.results ?? []);
 }

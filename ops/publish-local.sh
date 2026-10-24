@@ -41,7 +41,7 @@ fi
 # The release these assets live on, and the files to publish. Keep in sync with
 # the enabled communities in communities.json / the CI workflow.
 RELEASE_TAG="events-latest"
-FILES=(improvlore.json mtg.json)
+FILES=(improvlore.json mtg.json eleven-am-club.json)
 
 # Heartbeat: records that a publish run *completed successfully*, whether it
 # uploaded new data or skipped because nothing changed. The freshness checker
@@ -55,6 +55,15 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] Starting local publish"
 # 1. Build (this is where District enrichment happens, on the local India IP).
 STEP="build (node src/build.js)"
 node src/build.js
+
+# 1a. Sync improvlore to Cloudflare D1 (backs improvlore.com/admin and the Worker API).
+STEP="sync improvlore to D1 (node src/sync-d1.js)"
+sync_output="$(node src/sync-d1.js)"
+echo "$sync_output"
+d1_changed=0
+if [[ "$sync_output" =~ "Synced " ]]; then
+  d1_changed=1
+fi
 
 # 1b. Compare each freshly-built file against what's currently published on the
 # release. Comparing against the live assets (not a local cache) means we still
@@ -71,15 +80,17 @@ for f in "${FILES[@]}"; do
   fi
 done
 
-if (( changed == 0 )); then
+if (( changed == 0 && d1_changed == 0 )); then
   heartbeat
-  echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] No changes vs published release; skipping upload + Cloudflare rebuild"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] No changes vs published release or D1; skipping upload + Cloudflare rebuild"
   exit 0
 fi
 
 # 2. Upload to the release, overwriting the existing assets (--clobber).
-STEP="release upload (gh)"
-gh release upload "$RELEASE_TAG" "${FILES[@]}" --clobber
+if (( changed == 1 )); then
+  STEP="release upload (gh)"
+  gh release upload "$RELEASE_TAG" "${FILES[@]}" --clobber
+fi
 
 # 3. Trigger the Cloudflare Pages rebuild so the site picks up the new data.
 STEP="cloudflare rebuild trigger"
