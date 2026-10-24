@@ -6,8 +6,13 @@ import {
   getTopicAuthor,
   buildEvent,
 } from "./lib/discourse.js";
-import { loadDistrictEvents } from "./lib/district.js";
-import { mergeDistrict } from "./lib/merge.js";
+import { mergeCustomEvents } from "./lib/merge.js";
+import {
+  downloadEventsDb,
+  extractBlrTodayEvents,
+  DEFAULT_DB_PATH,
+} from "./lib/blr-today.js";
+import { applyD1Overrides } from "./lib/d1-overrides.js";
 
 function normalizeDate(str) {
   return str.replace(" ", "T");
@@ -40,6 +45,30 @@ async function loadCustomEvents(community) {
 async function buildCommunity(community, calendar) {
   console.log(`\n=== Building "${community.name}" -> ${community.output} ===`);
 
+  if (community.source === "blr-today" || community.name === "improvlore") {
+    try {
+      console.log(`  Source: blr.today automated dataset (${DEFAULT_DB_PATH})`);
+      await downloadEventsDb(DEFAULT_DB_PATH);
+      const blrEvents = extractBlrTodayEvents(DEFAULT_DB_PATH, { filterFuture: true });
+      console.log(`  Extracted ${blrEvents.length} events from blr.today`);
+
+      const customEvents = await loadCustomEvents(community);
+      console.log(`  Loaded ${customEvents.length} custom events`);
+      const mergedWithCustom = mergeCustomEvents(blrEvents, customEvents);
+
+      const all = await applyD1Overrides(mergedWithCustom, community.name);
+      all.sort(
+        (a, b) => new Date(normalizeDate(a.event_starts_at)) - new Date(normalizeDate(b.event_starts_at))
+      );
+
+      await writeFile(community.output, JSON.stringify(all, null, 2));
+      console.log(`  Written ${all.length} events to ${community.output}`);
+      return;
+    } catch (err) {
+      console.warn(`  blr.today extraction failed: ${err.message}. Falling back to Discourse...`);
+    }
+  }
+
   const { topics, users } = calendar;
   const usersById = new Map(users.map((u) => [u.id, u]));
   const keyword = community.filterKeyword.toLowerCase();
@@ -51,6 +80,7 @@ async function buildCommunity(community, calendar) {
     .map((topic) => ({ topic, author: getTopicAuthor(topic, usersById) }))
     .filter(({ topic, author }) => {
       if (!topic.event_starts_at || !isFuture(topic.event_starts_at)) return false;
+
       const byKeyword = topic.title?.toLowerCase().includes(keyword);
       const byAuthor = author && authorSet.has(author.toLowerCase());
       return byKeyword || byAuthor;
@@ -84,18 +114,8 @@ async function buildCommunity(community, calendar) {
   const customEvents = await loadCustomEvents(community);
   console.log(`  Loaded ${customEvents.length} custom events`);
 
-  // District is both a discovery source (events not yet on Discourse) and the
-  // authority on date/time (it's the ticketing system), so it overrides on
-  // conflict. Merge after building the base list, then sort — District may have
-  // moved an event's date.
-  const districtBySlug = await loadDistrictEvents(community);
-  const base = [...discourseEvents, ...customEvents];
-  const all = mergeDistrict(base, districtBySlug).sort(
+  const all = mergeCustomEvents(discourseEvents, customEvents).sort(
     (a, b) => new Date(normalizeDate(a.event_starts_at)) - new Date(normalizeDate(b.event_starts_at))
-  );
-  console.log(
-    `  ${districtBySlug.size} District events (${all.length - base.length} new, ` +
-      `${districtBySlug.size - (all.length - base.length)} overriding)`
   );
 
   await writeFile(community.output, JSON.stringify(all, null, 2));

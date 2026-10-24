@@ -11,3 +11,8 @@ node_modules/
 
 # Heartbeat written by ops/publish-local.sh on each successful run
 .last-run
+
+# blr.today SQLite database
+events.db
+events.db-*
+

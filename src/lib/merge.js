@@ -1,21 +1,5 @@
-// "https://district.in/some-slug-jun13-2026/event" -> "some-slug-jun13-2026".
-// District keeps the date suffix that Discourse drops, so dedup must use the
-// slug District serves (derived from the event's url), never event.slug.
-function districtSlugFromUrl(url) {
-  try {
-    const parts = new URL(url).pathname.split("/").filter(Boolean);
-    const i = parts.lastIndexOf("event");
-    return i > 0 ? parts[i - 1] : parts[parts.length - 1] || null;
-  } catch {
-    return null;
-  }
-}
-
-// Strips punctuation as well as collapsing whitespace: Discourse and District
-// occasionally disagree on punctuation for the same show (e.g. "And Then?"
-// vs "And, Then?"), and a title-only match is the sole way a Discourse post
-// without a District ticket link finds its District twin. Punctuation drift
-// there silently defeats the match, leaving both copies in the merged output.
+// Strips punctuation as well as collapsing whitespace: handles minor title
+// discrepancies across feeds and ensures consistent normalization for deduplication.
 export const normTitle = (t) =>
   (t ?? "")
     .toLowerCase()
@@ -23,58 +7,51 @@ export const normTitle = (t) =>
     .replace(/\s+/g, " ")
     .trim();
 
-// Merge District events into the Discourse/custom list with District winning on
-// conflict. A base event matches a District event by District slug (derived
-// from its url) or, as a fallback, by normalised title — because a Discourse
-// event posted without its District ticket link has no slug to match on, and
-// we must not emit it twice (once from Discourse, once from District). On a
-// match we keep the base event but overwrite the fields District owns
-// (date/time, ticket url/image). District-only events are appended.
-//
-// A show can have several live District dates at once (see district.js's
-// per-date keys), so the title index holds every candidate per title, not
-// just one — a title-only match picks whichever candidate starts soonest, and
-// is consumed (removed from the pool) so two Discourse posts with the same
-// title don't both bind to the same District date.
-export function mergeDistrict(baseEvents, districtBySlug) {
-  if (districtBySlug.size === 0) return baseEvents;
+// Merges custom events (e.g. from custom.json or custom.improvlore.json) onto
+// raw ingest events. Custom events override raw events on match (by normalized
+// title and date) and standalone custom events are appended.
+export function mergeCustomEvents(rawEvents, customEvents) {
+  if (!customEvents || customEvents.length === 0) return rawEvents;
 
-  // Secondary index so a slug-less base event can still find its District twin.
-  const byTitle = new Map();
-  for (const d of districtBySlug.values()) {
-    const key = normTitle(d.title);
-    if (!key) continue;
-    if (!byTitle.has(key)) byTitle.set(key, []);
-    byTitle.get(key).push(d);
-  }
-  for (const candidates of byTitle.values()) {
-    candidates.sort((a, b) => new Date(a.event_starts_at) - new Date(b.event_starts_at));
+  const customByTitle = new Map();
+  for (const ce of customEvents) {
+    const key = normTitle(ce.title);
+    if (!customByTitle.has(key)) customByTitle.set(key, []);
+    customByTitle.get(key).push(ce);
   }
 
-  const matched = new Set();
-  const merged = baseEvents.map((ev) => {
-    const slug = districtSlugFromUrl(ev.url);
-    let d = slug && districtBySlug.get(slug);
-    if (!d) {
-      const candidates = byTitle.get(normTitle(ev.title));
-      d = candidates?.shift(); // soonest remaining date with this title
-    }
-    if (!d) return ev;
-    matched.add(d.slug);
-    // District owns the schedule and the live ticket link; keep the richer
-    // Discourse copy (excerpt/full_content/learn_more) where we have it.
+  const usedCustom = new Set();
+  const merged = rawEvents.map((raw) => {
+    const key = normTitle(raw.title);
+    const candidates = customByTitle.get(key);
+    if (!candidates || candidates.length === 0) return raw;
+
+    // Find custom candidate matching date or pick first
+    const rawDate = (raw.event_starts_at || "").slice(0, 10);
+    const matchIdx = candidates.findIndex((c) => {
+      const cDate = (c.event_starts_at || "").slice(0, 10);
+      return cDate === rawDate;
+    });
+
+    const custom = matchIdx >= 0 ? candidates.splice(matchIdx, 1)[0] : candidates.shift();
+    if (!custom) return raw;
+
+    usedCustom.add(custom);
     return {
-      ...ev,
-      event_starts_at: d.event_starts_at,
-      event_ends_at: d.event_ends_at,
-      image_url: ev.image_url ?? d.image_url,
-      url: d.url,
+      ...raw,
+      ...custom,
+      slug: custom.slug || raw.slug,
+      tags: custom.tags !== undefined ? custom.tags : raw.tags,
     };
   });
 
-  // District-only events (no Discourse/custom counterpart).
-  for (const [slug, d] of districtBySlug) {
-    if (!matched.has(slug)) merged.push(d);
+  for (const ce of customEvents) {
+    if (!usedCustom.has(ce)) {
+      merged.push(ce);
+    }
   }
-  return merged;
+
+  return merged.sort(
+    (a, b) => new Date(a.event_starts_at) - new Date(b.event_starts_at)
+  );
 }

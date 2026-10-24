@@ -5,21 +5,26 @@ Fetches upcoming community events from the [Underline Center Discourse calendar]
 ## How it works
 
 1. Reads [`communities.json`](communities.json), which defines each community to build.
-2. Fetches the Underline Center calendar listing once (shared across all communities).
-3. For each community:
-   - Selects topics whose title contains the community's `filterKeyword` **or** whose original poster is in the community's `authors` list, and whose event is in the future.
-   - Fetches full topic detail for each match (in parallel).
-   - Merges with manually curated events (see below), filters out past ones.
-   - Sorts by `event_starts_at` ascending and writes the community's `output` file.
-4. The GitHub Actions workflow publishes all output files to a single release tag (`events-latest`).
+2. For communities with `"source": "blr-today"` (e.g. `improvlore`):
+   - Downloads/consumes the automated [`blr.today`](https://github.com/blr-today/dataset) SQLite dataset (`events.db`).
+   - Extracts Improv Lore events via keyword, organizer, title, description, and JSON-LD inspection.
+   - Deduplicates multiple rows (e.g. Underline Center forum topic + District ticketing entry) by date and title.
+   - Normalizes records to the standard `improvlore.json` contract (derived tags, UTC ISO dates, high-res images, District ticket link prioritization).
+   - Overlays `custom.json` events and Cloudflare D1 admin overrides (managed via `improvlore.com/admin`).
+3. For forum-based communities (`mtg`, `eleven am club`):
+   - Fetches the Underline Center Discourse calendar listing and District ticketing pages.
+   - Merges with manual custom events and filters out past ones.
+4. The GitHub Actions workflow publishes all output files to a single release tag (`events-latest`) and triggers the Cloudflare Pages deploy hook.
 
 ## Run locally
 
 ```bash
+npm test            # Run ingest and schema validation test suite
 node src/build.js   # or: npm run build
 ```
 
-Requires Node 18+ (uses native `fetch`). No dependencies to install.
+Requires Node 22+ (uses native `fetch` and `node:sqlite`). No external dependencies to install.
+
 
 ## Adding / changing communities
 
@@ -78,10 +83,6 @@ Only `title` and `event_starts_at` are required.
 Both `"2026-06-15 19:30:00"` and `"2026-06-15T19:30:00Z"` date formats are accepted. Past events are automatically filtered out.
 
 Custom events have no `tags` field — this is how the front-end distinguishes them from Discourse events (which carry `["UC"]`).
-
-## District recurring dates
-
-A District event page can list several upcoming dates for the same show (one full `Event` JSON-LD block per date). [`district.js`](src/lib/district.js) extracts all of them, not just the first, keying each date as its own entry (`<sitemap-slug>-<YYYYMMDD>`) while `url`/`learn_more` still point at the one real District page. [`merge.js`](src/lib/merge.js) matches a Discourse post to whichever District date starts soonest when several share a title.
 
 ## Improv Lore admin (D1)
 

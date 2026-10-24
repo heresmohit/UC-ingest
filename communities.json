@@ -2,29 +2,21 @@
   {
     "name": "improvlore",
     "output": "improvlore.json",
+    "source": "blr-today",
     "filterKeyword": "improv",
-    "authors": ["amehra4u"],
-    "district": {
-      "match": ["improv lore", "improvlore"]
-    }
+    "authors": ["amehra4u"]
   },
   {
     "name": "mtg",
     "output": "mtg.json",
     "filterKeyword": "magic: the gathering",
-    "authors": [],
-    "district": {
-      "match": ["magic the gathering with reroll", "magic the gathering by reroll"]
-    }
+    "authors": []
   },
   {
     "name": "eleven am club",
     "output": "eleven-am-club.json",
     "filterKeyword": "eleven am club",
-    "authors": ["4nn_ml"],
-    "district": {
-      "match": ["eleven am club", "Eleven AM Club"]
-    }
+    "authors": ["4nn_ml"]
   },
   {
     "name": "cinemanextdoor",

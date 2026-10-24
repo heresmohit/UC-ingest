@@ -2,9 +2,7 @@ name: Ingest Events
 
 on:
   schedule:
-    # Nightly publish at 00:00 IST (= 18:30 UTC; GitHub cron is UTC). District
-    # enrichment now works on GitHub runners (we read the un-geoblocked event
-    # pages, not the geoblocked API), so this is a full District-enriched build.
+    # Nightly publish at 00:00 IST (= 18:30 UTC; GitHub cron is UTC).
     - cron: "30 18 * * *"
   workflow_dispatch:
     inputs:
@@ -23,8 +21,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - run: node src/build.js
+          node-version: "22"
+      - name: Download blr.today dataset
+        run: curl -fsSL -o events.db https://github.com/blr-today/dataset/releases/latest/download/events.db
+      - name: Run tests
+        run: npm test
+      - name: Build events
+        run: node src/build.js
 
       # Syncs improvlore.json into D1 for the /admin page. improvlore is the
       # only community backed by D1 today; every other community stays pure

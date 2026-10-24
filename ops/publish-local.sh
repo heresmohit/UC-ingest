@@ -2,9 +2,8 @@
 #
 # Daily local publish for UC-ingest.
 #
-# District's API geoblocks non-India IPs, so GitHub Actions can't fetch it.
-# This script runs the full pipeline from a local (Indian) IP instead:
-#   1. build (Discourse + District) -> writes the per-community JSON files
+# Runs the full event ingestion pipeline:
+#   1. build (blr.today dataset + Discourse calendar) -> writes community JSON files
 #   2. if the built files differ from what's already published, upload them to
 #      the `events-latest` GitHub release (what the site reads)
 #   3. and trigger the Cloudflare Pages rebuild
@@ -52,7 +51,11 @@ heartbeat() { date -u +%s > "$HEARTBEAT_FILE"; }
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] Starting local publish"
 
-# 1. Build (this is where District enrichment happens, on the local India IP).
+# 0. Download latest blr.today events dataset
+STEP="download blr.today dataset"
+curl -fsSL -o events.db "https://github.com/blr-today/dataset/releases/latest/download/events.db" || true
+
+# 1. Build event JSON files.
 STEP="build (node src/build.js)"
 node src/build.js
 
