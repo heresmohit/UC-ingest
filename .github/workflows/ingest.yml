@@ -2,8 +2,8 @@ name: Ingest Events
 
 on:
   schedule:
-    # Nightly publish at 00:00 IST (= 18:30 UTC; GitHub cron is UTC).
-    - cron: "30 18 * * *"
+    # Every 12 hours at 00:00 and 12:00 IST (= 18:30 and 06:30 UTC; GitHub cron is UTC).
+    - cron: "30 6,18 * * *"
   workflow_dispatch:
     inputs:
       dry_run:

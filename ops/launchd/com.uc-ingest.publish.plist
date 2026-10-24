@@ -28,14 +28,22 @@
     <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
-  <!-- Daily at 21:15 local (IST). -->
+  <!-- Every 12 hours: 09:15 and 21:15 local (IST). -->
   <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key>
-    <integer>21</integer>
-    <key>Minute</key>
-    <integer>15</integer>
-  </dict>
+  <array>
+    <dict>
+      <key>Hour</key>
+      <integer>9</integer>
+      <key>Minute</key>
+      <integer>15</integer>
+    </dict>
+    <dict>
+      <key>Hour</key>
+      <integer>21</integer>
+      <key>Minute</key>
+      <integer>15</integer>
+    </dict>
+  </array>
 
   <key>StandardOutPath</key>
   <string>/Users/mg/Desktop/Dev/UC-ingest/publish.log</string>
