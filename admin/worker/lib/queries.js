@@ -97,17 +97,23 @@ export async function patchEvent(db, id, patch) {
       sets.push("display_enabled = ?");
       values.push(patch.enabled ? 1 : 0);
     } else if (jsonKey === "occurrence_status") {
-      if (patch.occurrence_status !== "occurred" && patch.occurrence_status !== "cancelled") {
-        throw new Error(`Invalid occurrence_status: ${patch.occurrence_status}`);
+      const status = patch.occurrence_status;
+      if (status !== null && status !== "" && status !== "occurred" && status !== "cancelled") {
+        throw new Error(`Invalid occurrence_status: ${status}`);
       }
       sets.push("occurrence_status = ?");
-      values.push(patch.occurrence_status);
+      values.push(status || null);
     } else if (jsonKey === "tags") {
       sets.push("display_tags = ?");
-      values.push(JSON.stringify(patch.tags ?? []));
+      const tagsArr = Array.isArray(patch.tags)
+        ? patch.tags
+        : typeof patch.tags === "string"
+        ? patch.tags.split(",").map((t) => t.trim()).filter(Boolean)
+        : [];
+      values.push(JSON.stringify(tagsArr));
     } else if (EDITABLE_COLUMNS.has(jsonKey)) {
       sets.push(`display_${jsonKey} = ?`);
-      values.push(patch[jsonKey]);
+      values.push(patch[jsonKey] ?? null);
     }
     // unknown keys are silently ignored rather than erroring, so a client
     // sending an extra field (e.g. `id`) doesn't break the request
