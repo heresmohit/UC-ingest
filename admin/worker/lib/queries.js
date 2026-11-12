@@ -21,6 +21,10 @@ export const FIELDS = [
 const EDITABLE_COLUMNS = new Set([...FIELDS.map(([, col]) => col), "tags"]);
 
 function rowToEvent(row) {
+  const now = new Date();
+  const startsAtDate = row.display_event_starts_at ? new Date(row.display_event_starts_at) : null;
+  const isPast = startsAtDate && !isNaN(startsAtDate.getTime()) ? startsAtDate < now : false;
+
   const event = {
     id: row.id,
     slug: row.slug,
@@ -30,7 +34,7 @@ function rowToEvent(row) {
     last_edited_at: row.last_edited_at,
     enabled: !!row.display_enabled,
     occurrence_status: row.occurrence_status, // null | 'occurred' | 'cancelled'
-    is_past: new Date(row.display_event_starts_at) < new Date(),
+    is_past: isPast,
   };
   const diff = {};
   const source = {};
@@ -47,7 +51,15 @@ function rowToEvent(row) {
   if (ingestedTags !== (row.display_tags ?? "[]")) {
     diff.tags = source.tags;
   }
-  if (Object.keys(diff).length > 0) event.pending_source_update = diff;
+
+  // If the event is in the past, or if the ingested update has a date before today,
+  // disregard the update completely so past events never prompt for review.
+  const ingestedStarts = row.ingested_event_starts_at ? new Date(row.ingested_event_starts_at) : null;
+  const ingestedIsPast = ingestedStarts && !isNaN(ingestedStarts.getTime()) ? ingestedStarts < now : false;
+
+  if (!isPast && !ingestedIsPast && Object.keys(diff).length > 0) {
+    event.pending_source_update = diff;
+  }
   event.source = source;
   return event;
 }
