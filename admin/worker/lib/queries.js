@@ -21,25 +21,47 @@ export const FIELDS = [
 const EDITABLE_COLUMNS = new Set([...FIELDS.map(([, col]) => col), "tags"]);
 
 function rowToEvent(row) {
-  const event = { id: row.id, slug: row.slug, normalized_title: row.normalized_title };
+  const event = {
+    id: row.id,
+    slug: row.slug,
+    normalized_title: row.normalized_title,
+    first_seen_at: row.first_seen_at,
+    last_synced_at: row.last_synced_at,
+    last_edited_at: row.last_edited_at,
+    enabled: !!row.display_enabled,
+    occurrence_status: row.occurrence_status, // null | 'occurred' | 'cancelled'
+    is_past: new Date(row.display_event_starts_at) < new Date(),
+  };
   const diff = {};
+  const source = {};
   for (const [jsonKey, col] of FIELDS) {
     event[jsonKey] = row[`display_${col}`];
+    source[jsonKey] = row[`ingested_${col}`];
     if ((row[`ingested_${col}`] ?? null) !== (row[`display_${col}`] ?? null)) {
       diff[jsonKey] = row[`ingested_${col}`];
     }
   }
   event.tags = JSON.parse(row.display_tags ?? "[]");
   const ingestedTags = row.ingested_tags ?? "[]";
+  source.tags = JSON.parse(ingestedTags);
   if (ingestedTags !== (row.display_tags ?? "[]")) {
-    diff.tags = JSON.parse(ingestedTags);
+    diff.tags = source.tags;
   }
-  event.enabled = !!row.display_enabled;
-  event.occurrence_status = row.occurrence_status; // null | 'occurred' | 'cancelled'
-  event.is_past = new Date(row.display_event_starts_at) < new Date();
-  event.last_edited_at = row.last_edited_at;
   if (Object.keys(diff).length > 0) event.pending_source_update = diff;
+  event.source = source;
   return event;
+}
+
+// All events for the community in flat chronological order
+export async function getAllEvents(db) {
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM events WHERE community = ? ORDER BY display_event_starts_at ASC`
+    )
+    .bind(COMMUNITY)
+    .all();
+
+  return results.map(rowToEvent);
 }
 
 // All events for the (single, hardcoded) community, grouped by normalized
@@ -104,6 +126,13 @@ export async function patchEvent(db, id, patch) {
   await db
     .prepare(`UPDATE events SET ${sets.join(", ")} WHERE id = ? AND community = ?`)
     .bind(...values)
+    .run();
+}
+
+export async function deleteEvent(db, id) {
+  await db
+    .prepare("DELETE FROM events WHERE id = ? AND community = ?")
+    .bind(id, COMMUNITY)
     .run();
 }
 

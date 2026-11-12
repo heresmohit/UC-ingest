@@ -1,8 +1,9 @@
 import { handleAdminPage } from "./routes/admin-page.js";
-import { handleListEvents, handlePatchEvent } from "./routes/api-events.js";
+import { handleListEvents, handlePatchEvent, handleDeleteEvent } from "./routes/api-events.js";
 import { handlePatchCommunity } from "./routes/api-communities.js";
 import { handlePublicFeed } from "./routes/public-feed.js";
 import { getCommunityState } from "./lib/queries.js";
+import { triggerRebuild } from "./lib/rebuild.js";
 
 // Cloudflare Access sits in front of /admin and /api/admin/* in production
 // (configured in the dashboard, scoped to the admin's email) — no
@@ -23,9 +24,19 @@ export default {
     const url = new URL(request.url);
     const { pathname } = url;
 
-    if (pathname === "/admin") {
+    if (pathname === "/admin" || pathname === "/admin/") {
       if (!requireAdmin(request, env)) return new Response("Unauthorized", { status: 401 });
       return handleAdminPage();
+    }
+
+    if (pathname === "/api/admin/publish") {
+      if (!requireAdmin(request, env)) return new Response("Unauthorized", { status: 401 });
+      if (request.method === "POST") {
+        await triggerRebuild(env);
+        return new Response(JSON.stringify({ ok: true, timestamp: new Date().toISOString() }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
     }
 
     if (pathname === "/api/admin/events") {
@@ -36,7 +47,9 @@ export default {
     const eventMatch = pathname.match(/^\/api\/admin\/events\/(\d+)$/);
     if (eventMatch) {
       if (!requireAdmin(request, env)) return new Response("Unauthorized", { status: 401 });
-      if (request.method === "PATCH") return handlePatchEvent(request, env, Number(eventMatch[1]));
+      const id = Number(eventMatch[1]);
+      if (request.method === "PATCH") return handlePatchEvent(request, env, id);
+      if (request.method === "DELETE") return handleDeleteEvent(request, env, id);
     }
 
     if (pathname === "/api/admin/communities/improvlore") {
