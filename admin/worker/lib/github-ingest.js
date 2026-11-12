@@ -72,3 +72,4 @@ export async function getIngestStatus(env) {
     htmlUrl: latestRun.html_url,
   };
 }
+
