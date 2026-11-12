@@ -893,7 +893,7 @@ function render() {
         (ev.excerpt ? '<div class="event-excerpt">' + escapeHtml(ev.excerpt) + '</div>' : '') +
         '<div class="event-links">' +
           (ev.url ? '<a href="' + escapeHtml(ev.url) + '" target="_blank" class="event-link-pill">Tickets ↗</a>' : '') +
-          (ev.learn_more ? '<a href="' + escapeHtml(ev.learn_more)}" target="_blank" class="event-link-pill">Forum ↗</a>' : '') +
+          (ev.learn_more ? '<a href="' + escapeHtml(ev.learn_more) + '" target="_blank" class="event-link-pill">Forum ↗</a>' : '') +
         '</div>' +
       '</div>' +
       '<div class="event-actions">' +
