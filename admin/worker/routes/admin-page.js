@@ -536,6 +536,7 @@ const PAGE = `<!doctype html>
     animation: toastIn 0.2s ease forwards;
   }
   @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .toast-success { background: #059669; }
   .toast-error { background: #dc2626; }
   .toast-info { background: #2563eb; }
@@ -563,12 +564,24 @@ const PAGE = `<!doctype html>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
         Refresh
       </button>
+      <button class="btn btn-outline" id="btn-pull" title="Pull and ingest latest events from blr.today & Underline Center">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span id="btn-pull-label">Pull from Sources</span>
+      </button>
       <button class="btn btn-publish" id="btn-publish" title="Deploy updates to live website">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
         <span id="btn-publish-label">Publish to Website</span>
       </button>
     </div>
   </header>
+
+  <div class="publish-status-bar" id="pull-status-banner" style="background:#3b82f615; border-color:#3b82f640; color:#60a5fa;">
+    <div style="display:flex; align-items:center; gap:0.6rem;">
+      <span class="spinner" style="display:inline-block; width:14px; height:14px; border:2px solid #60a5fa; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite;"></span>
+      <span id="pull-status-text">Ingesting latest events from blr.today and Underline Center...</span>
+    </div>
+    <a id="pull-status-link" href="#" target="_blank" style="color:#60a5fa; text-decoration:underline; font-size:0.8rem; display:none;">View GitHub Logs ↗</a>
+  </div>
 
   <div class="publish-status-bar" id="publish-banner">
     <div><strong>Ready to deploy:</strong> You have uncommitted or modified events saved in D1. Click "Publish to Website" to rebuild the live site.</div>
@@ -1015,6 +1028,66 @@ async function publishLive() {
   }
 }
 document.getElementById("btn-publish").addEventListener("click", publishLive);
+
+// Pull from Sources (GitHub Actions on-demand ingest)
+let pullPollTimer = null;
+async function pullFromSources() {
+  const btn = document.getElementById("btn-pull");
+  const label = document.getElementById("btn-pull-label");
+  const banner = document.getElementById("pull-status-banner");
+  const statusText = document.getElementById("pull-status-text");
+  const statusLink = document.getElementById("pull-status-link");
+
+  btn.disabled = true;
+  label.textContent = "Triggering…";
+
+  try {
+    const res = await api("/api/admin/pull", { method: "POST" });
+    if (!res.ok && res.error) throw new Error(res.error);
+
+    banner.classList.add("show");
+    statusText.textContent = "Ingestion started... Fetching from blr.today & Underline Center";
+    statusLink.style.display = "none";
+    showToast("Started pulling from blr.today & Underline Center", "info");
+
+    const startTime = Date.now();
+    clearInterval(pullPollTimer);
+    pullPollTimer = setInterval(async () => {
+      try {
+        const st = await api("/api/admin/pull/status");
+        if (st.htmlUrl) {
+          statusLink.href = st.htmlUrl;
+          statusLink.style.display = "inline";
+        }
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        if (st.status === "in_progress" || st.status === "queued") {
+          statusText.textContent = "Ingesting events from blr.today & Underline Center... (" + elapsed + "s, " + st.status + ")";
+        } else if (st.status === "completed") {
+          clearInterval(pullPollTimer);
+          btn.disabled = false;
+          label.textContent = "Pull from Sources";
+          if (st.conclusion === "success") {
+            statusText.textContent = "Completed in " + elapsed + "s! Updating events list...";
+            setTimeout(() => banner.classList.remove("show"), 3500);
+            showToast("Successfully pulled and updated events!", "success");
+            await loadData();
+          } else {
+            statusText.textContent = "Ingestion failed (" + st.conclusion + "). Check GitHub logs.";
+            showToast("Ingestion ended with: " + st.conclusion, "error");
+          }
+        }
+      } catch (pollErr) {
+        console.warn("Pull status poll error:", pollErr);
+      }
+    }, 3500);
+  } catch (err) {
+    btn.disabled = false;
+    label.textContent = "Pull from Sources";
+    banner.classList.remove("show");
+    showToast("Pull failed: " + err.message, "error");
+  }
+}
+document.getElementById("btn-pull").addEventListener("click", pullFromSources);
 
 // Quick toggle enable/disable
 document.getElementById("events-container").addEventListener("change", async (e) => {

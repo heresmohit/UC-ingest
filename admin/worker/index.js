@@ -4,6 +4,7 @@ import { handlePatchCommunity } from "./routes/api-communities.js";
 import { handlePublicFeed } from "./routes/public-feed.js";
 import { getCommunityState } from "./lib/queries.js";
 import { triggerRebuild } from "./lib/rebuild.js";
+import { dispatchIngest, getIngestStatus } from "./lib/github-ingest.js";
 
 // Cloudflare Access sits in front of /admin and /api/admin/* in production
 // (configured in the dashboard, scoped to the admin's email) — no
@@ -36,6 +37,41 @@ export default {
         return new Response(JSON.stringify({ ok: true, timestamp: new Date().toISOString() }), {
           headers: { "content-type": "application/json" },
         });
+      }
+    }
+
+    if (pathname === "/api/admin/pull") {
+      if (!requireAdmin(request, env)) return new Response("Unauthorized", { status: 401 });
+      if (request.method === "POST") {
+        try {
+          const body = await request.json().catch(() => ({}));
+          const result = await dispatchIngest(env, body.publish_site);
+          return new Response(JSON.stringify(result), {
+            headers: { "content-type": "application/json" },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ ok: false, error: err.message }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          });
+        }
+      }
+    }
+
+    if (pathname === "/api/admin/pull/status") {
+      if (!requireAdmin(request, env)) return new Response("Unauthorized", { status: 401 });
+      if (request.method === "GET") {
+        try {
+          const status = await getIngestStatus(env);
+          return new Response(JSON.stringify(status), {
+            headers: { "content-type": "application/json" },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ ok: false, error: err.message }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          });
+        }
       }
     }
 

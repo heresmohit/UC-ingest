@@ -5,52 +5,5 @@
     "source": "blr-today",
     "filterKeyword": "improv",
     "authors": ["amehra4u"]
-  },
-  {
-    "name": "mtg",
-    "output": "mtg.json",
-    "filterKeyword": "magic: the gathering",
-    "authors": []
-  },
-  {
-    "name": "eleven am club",
-    "output": "eleven-am-club.json",
-    "filterKeyword": "eleven am club",
-    "authors": ["4nn_ml"]
-  },
-  {
-    "name": "cinemanextdoor",
-    "output": "cinemanextdoor.json",
-    "filterKeyword": "cinema next door",
-    "authors": ["manujosephilip", "anikthink", "abhijna"],
-    "enabled": false
-  },
-  {
-    "name": "tastytrivia",
-    "output": "tastytrivia.json",
-    "filterKeyword": "tasty trivia",
-    "authors": ["Saloni"],
-    "enabled": false
-  },
-  {
-    "name": "playfulpursuits",
-    "output": "playfulpursuits.json",
-    "filterKeyword": "playful pursuits",
-    "authors": ["cataclasma"],
-    "enabled": false
-  },
-  {
-    "name": "indiewebclub",
-    "output": "indiewebclub.json",
-    "filterKeyword": "indiewebclub",
-    "authors": ["tanvibhakta"],
-    "enabled": false
-  },
-  {
-    "name": "roligami",
-    "output": "roligami.json",
-    "filterKeyword": "roligami",
-    "authors": ["Roli"],
-    "enabled": false
   }
 ]
